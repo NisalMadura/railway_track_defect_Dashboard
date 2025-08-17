@@ -1,24 +1,24 @@
-// config/api.js - Simple configuration
-
 const API_CONFIG = {
-  // Get the API base URL based on environment
   getBaseUrl: () => {
-    // If we have an environment variable, use it
-    if (process.env.REACT_APP_API_URL) {
-      return process.env.REACT_APP_API_URL;
+    // Check if we're running on the same server as the API
+    if (typeof window !== 'undefined' && window.location.hostname === '34.230.51.109') {
+      return 'http://34.230.51.109:4000'; // Same server, different port
     }
     
-    // Otherwise, use the default
-    return 'http://34.230.51.109:4000';
+    // For local development
+    if (process.env.NODE_ENV === 'development') {
+      return process.env.REACT_APP_API_URL || 'http://localhost:4000';
+    }
+    
+    // Production fallback
+    return process.env.REACT_APP_API_URL || 'http://34.230.51.109:4000';
   },
   
-  // Get full API URL with /api path
   getApiUrl: () => {
     return `${API_CONFIG.getBaseUrl()}/api`;
   },
   
-  // Timeout for requests
-  TIMEOUT: 10000
+  TIMEOUT: 30000,
 };
 
 export default API_CONFIG;
