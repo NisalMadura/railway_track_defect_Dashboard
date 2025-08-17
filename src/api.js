@@ -2,7 +2,7 @@
 
 export const API_CONFIG = {
     // Your API base URL
-    BASE_URL: 'http://192.168.1.72:4000/api',
+    BASE_URL: 'http://34.230.51.109/:4000/api',
     
     // You can add other API related configuration here
     TIMEOUT: 10000, // 10 seconds timeout
