@@ -1,17 +1,24 @@
-// config/api.js
+// config/api.js - Simple configuration
 
-export const API_CONFIG = {
-    // Your API base URL
-    BASE_URL: 'http://34.230.51.109:4000/api',
-    
-    // You can add other API related configuration here
-    TIMEOUT: 10000, // 10 seconds timeout
-    RETRY_COUNT: 3,
-    
-   
-    
-    // Method to get the current environment's URL
-    getEnvironmentBaseUrl: function(env = 'development') {
-      return this[env]?.BASE_URL || this.BASE_URL;
+const API_CONFIG = {
+  // Get the API base URL based on environment
+  getBaseUrl: () => {
+    // If we have an environment variable, use it
+    if (process.env.REACT_APP_API_URL) {
+      return process.env.REACT_APP_API_URL;
     }
-  };
+    
+    // Otherwise, use the default
+    return 'http://34.230.51.109:4000';
+  },
+  
+  // Get full API URL with /api path
+  getApiUrl: () => {
+    return `${API_CONFIG.getBaseUrl()}/api`;
+  },
+  
+  // Timeout for requests
+  TIMEOUT: 10000
+};
+
+export default API_CONFIG;

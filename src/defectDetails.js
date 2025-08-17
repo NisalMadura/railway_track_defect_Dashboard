@@ -1,30 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { API_CONFIG } from './api';
-
+import API_CONFIG from '../config/api'; // Import the simple API config
 
 const DefectDetail = ({ id, onBack }) => {
   const [defect, setDefect] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const API_URL = API_CONFIG.BASE_URL;
-
   useEffect(() => {
     const fetchDefectDetails = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(`${API_URL}/reports/${id}`);
+        
+        const apiUrl = `${API_CONFIG.getApiUrl()}/reports/${id}`;
+        
+        console.log('Fetching defect details from:', apiUrl);
+        
+        const response = await axios.get(apiUrl, {
+          timeout: API_CONFIG.TIMEOUT,
+        });
+        
+        console.log('Defect details received:', response.data);
         setDefect(response.data);
+        setError(null);
         setLoading(false);
       } catch (err) {
-        setError('Failed to fetch defect details');
-        setLoading(false);
         console.error('Error fetching defect details:', err);
+        
+        let errorMessage = 'Failed to fetch defect details';
+        
+        if (err.response) {
+          errorMessage += ` (${err.response.status})`;
+        } else if (err.request) {
+          errorMessage += ' - Network error';
+        } else {
+          errorMessage += ` - ${err.message}`;
+        }
+        
+        setError(errorMessage);
+        setLoading(false);
       }
     };
 
-    fetchDefectDetails();
+    if (id) {
+      fetchDefectDetails();
+    }
   }, [id]);
 
   // Format date to a more readable format
@@ -43,7 +63,7 @@ const DefectDetail = ({ id, onBack }) => {
 
   const handleGoBack = () => {
     if (onBack && typeof onBack === 'function') {
-      onBack(); // Call the callback function passed from parent
+      onBack();
     }
   };
 
@@ -154,6 +174,7 @@ const DefectDetail = ({ id, onBack }) => {
     statusBadge: (status) => {
       const colors = {
         'open': { bg: '#dbeafe', text: '#1e40af' },
+        'pending': { bg: '#fef3c7', text: '#92400e' },
         'in-progress': { bg: '#fef3c7', text: '#92400e' },
         'resolved': { bg: '#d1fae5', text: '#065f46' },
         'closed': { bg: '#e5e7eb', text: '#374151' }
@@ -174,6 +195,7 @@ const DefectDetail = ({ id, onBack }) => {
     },
     riskBadge: (risk) => {
       const colors = {
+        'critical': { bg: '#fee2e2', text: '#b91c1c' },
         'high': { bg: '#fee2e2', text: '#b91c1c' },
         'medium': { bg: '#fef3c7', text: '#92400e' },
         'low': { bg: '#d1fae5', text: '#065f46' }

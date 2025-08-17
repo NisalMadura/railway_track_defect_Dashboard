@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import API_CONFIG from '../config/api'; // Import the simple API config
 import DefectDetail from './defectDetails'; // Import the DefectDetail component
 
 const DefectManagement = () => {
@@ -10,7 +11,7 @@ const DefectManagement = () => {
   const [filteredRiskLevel, setFilteredRiskLevel] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedDefectId, setSelectedDefectId] = useState(null); // State to track selected defect
+  const [selectedDefectId, setSelectedDefectId] = useState(null);
   const defectsPerPage = 6;
 
   // Fetch defects from API
@@ -18,13 +19,35 @@ const DefectManagement = () => {
     const fetchDefects = async () => {
       try {
         setLoading(true);
-        const response = await axios.get('http://34.230.51.109:4000/api/reports');
+        
+        const apiUrl = `${API_CONFIG.getApiUrl()}/reports`;
+        
+        console.log('Fetching from:', apiUrl);
+        console.log('Environment:', process.env.NODE_ENV);
+        
+        const response = await axios.get(apiUrl, {
+          timeout: API_CONFIG.TIMEOUT,
+        });
+        
+        console.log('Response received:', response.data);
         setDefects(response.data);
+        setError(null); // Clear any previous errors
         setLoading(false);
       } catch (err) {
-        setError('Failed to fetch defects data');
+        console.error('Error details:', err);
+        
+        let errorMessage = 'Failed to fetch defects data';
+        
+        if (err.response) {
+          errorMessage += ` (${err.response.status})`;
+        } else if (err.request) {
+          errorMessage += ' - Network error';
+        } else {
+          errorMessage += ` - ${err.message}`;
+        }
+        
+        setError(errorMessage);
         setLoading(false);
-        console.error('Error fetching defects:', err);
       }
     };
 
@@ -33,12 +56,12 @@ const DefectManagement = () => {
 
   // Handle row click to view defect details
   const handleRowClick = (defectId) => {
-    setSelectedDefectId(defectId); // Set the selected defect ID
+    setSelectedDefectId(defectId);
   };
 
   // Handle going back to the defect list
   const handleBackToList = () => {
-    setSelectedDefectId(null); // Clear the selected defect ID
+    setSelectedDefectId(null);
   };
 
   // Filter defects based on the selected filters and search query
@@ -183,7 +206,7 @@ const DefectManagement = () => {
           </table>
         </div>
         
-        {filteredDefects.length === 0 && (
+        {filteredDefects.length === 0 && defects.length > 0 && (
           <div className="no-results">No defects found matching your criteria</div>
         )}
         
