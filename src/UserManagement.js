@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import  API_CONFIG  from './api';
+import  API_CONFIG  from './config/api';
 import './AdminDashboard.css'; // Make sure to create this CSS file
 
 const UserManagement = () => {

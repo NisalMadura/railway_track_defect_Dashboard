@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './AdminDashboard.css';
 import axios from 'axios';
-import API_CONFIG from './api';
+import API_CONFIG from './config/api';
 import Dashboard from './Dashboard';
 import DefectManagement from './DefectManagement';
 import UserManagement from './UserManagement';
