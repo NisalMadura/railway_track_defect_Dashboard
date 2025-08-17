@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import API_CONFIG from '../config/api'; // Import the simple API config
+import API_CONFIG from '../api'; // Import the simple API config
 import DefectDetail from './defectDetails'; // Import the DefectDetail component
 
 const DefectManagement = () => {
