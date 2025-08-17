@@ -18,7 +18,7 @@ const DefectManagement = () => {
     const fetchDefects = async () => {
       try {
         setLoading(true);
-        const response = await axios.get('http://192.168.1.72:4000/api/reports');
+        const response = await axios.get('http://34.230.51.109:4000/api/reports');
         setDefects(response.data);
         setLoading(false);
       } catch (err) {
