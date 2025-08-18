@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import  API_CONFIG  from './config/api';
+import API_CONFIG from './config/api';
 import { defects } from './AdminDashboard';
 
 const Dashboard = () => {
@@ -35,9 +35,9 @@ const Dashboard = () => {
   };
 
   const [pieChartData, setPieChartData] = useState({
-    pending: 11,
-    inProgress: 3,
-    resolved: 4
+    pending: 0,
+    inProgress: 0,
+    resolved: 0
   });
   
   // Add state for active teams and resolved count
@@ -56,50 +56,123 @@ const Dashboard = () => {
   // Add state for defect type distribution
   const [defectTypeData, setDefectTypeData] = useState([]);
 
-  // Define fetchData function outside useEffect so it can be referenced in JSX
+  // Define fetchData function with proper error handling and logging
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      const API_URL = API_CONFIG.BASE_URL;
+      // Use the corrected API configuration
+      const API_URL = API_CONFIG.getApiUrl(); // This should return the full API URL
+      console.log('Fetching data from API URL:', API_URL);
       
-      // Fetch reports data
-      const reportsResponse = await axios.get(`${API_URL}/reports`);
-      const allReports = reportsResponse.data;
+      // Test API connectivity first
+      try {
+        const healthCheck = await axios.get(`${API_URL}/health`, { 
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        console.log('API Health Check:', healthCheck.status);
+      } catch (healthError) {
+        console.warn('Health check failed, proceeding anyway:', healthError.message);
+      }
       
-      // Sort reports by date (newest first) and take the 4 most recent ones
-      const sortedReports = allReports.sort((a, b) => 
-        new Date(b.reportDate) - new Date(a.reportDate)
-      ).slice(0, 4);
-      
-      setRecentReports(sortedReports);
+      // Fetch reports data with better error handling
+      let allReports = [];
+      try {
+        console.log('Fetching reports from:', `${API_URL}/reports`);
+        const reportsResponse = await axios.get(`${API_URL}/reports`, {
+          timeout: API_CONFIG.TIMEOUT,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        console.log('Reports response:', reportsResponse.status, reportsResponse.data);
+        allReports = Array.isArray(reportsResponse.data) ? reportsResponse.data : [];
+        
+        // Sort reports by date (newest first) and take the 4 most recent ones
+        const sortedReports = allReports.sort((a, b) => 
+          new Date(b.reportDate || b.createdAt || 0) - new Date(a.reportDate || a.createdAt || 0)
+        ).slice(0, 4);
+        
+        setRecentReports(sortedReports);
+        console.log('Set recent reports:', sortedReports.length);
+        
+      } catch (reportsError) {
+        console.error("Error fetching reports:", reportsError);
+        throw new Error(`Failed to fetch reports: ${reportsError.message}`);
+      }
 
-      // Fetch pie chart data (includes inProgress count)
-      const pieResponse = await axios.get(`${API_URL}/reports/stats/pie`);
-      setPieChartData(pieResponse.data);
+      // Fetch pie chart data with fallback calculation
+      let chartData = { pending: 0, inProgress: 0, resolved: 0 };
+      try {
+        console.log('Fetching pie chart data from:', `${API_URL}/reports/stats/pie`);
+        const pieResponse = await axios.get(`${API_URL}/reports/stats/pie`, {
+          timeout: API_CONFIG.TIMEOUT,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        chartData = pieResponse.data;
+        console.log('Pie chart data:', chartData);
+      } catch (pieError) {
+        console.warn("Pie chart endpoint failed, calculating from reports:", pieError.message);
+        // Calculate from reports data as fallback
+        chartData = allReports.reduce((acc, report) => {
+          const status = (report.status || '').toLowerCase();
+          if (status === 'resolved' || status === 'completed') {
+            acc.resolved++;
+          } else if (status === 'in progress' || status === 'inprogress' || status === 'active') {
+            acc.inProgress++;
+          } else {
+            acc.pending++;
+          }
+          return acc;
+        }, { pending: 0, inProgress: 0, resolved: 0 });
+      }
+      setPieChartData(chartData);
 
-      // Fetch active teams data
-      const usersResponse = await axios.get(`${API_URL}/users`);
-      const activeTeamsCount = usersResponse.data.filter(user => user.isActive === true).length;
-      setActiveTeams(activeTeamsCount);
+      // Fetch active teams data with fallback
+      let teamsCount = 0;
+      try {
+        console.log('Fetching users from:', `${API_URL}/users`);
+        const usersResponse = await axios.get(`${API_URL}/users`, {
+          timeout: API_CONFIG.TIMEOUT,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        const users = Array.isArray(usersResponse.data) ? usersResponse.data : [];
+        teamsCount = users.filter(user => user.isActive === true || user.status === 'active').length;
+        console.log('Active teams count:', teamsCount);
+      } catch (usersError) {
+        console.warn("Users endpoint failed:", usersError.message);
+        // Use a default value or calculate from reports
+        teamsCount = new Set(allReports.map(r => r.assignedTo).filter(Boolean)).size;
+      }
+      setActiveTeams(teamsCount);
 
-      // Fetch resolved issues for the current month
+      // Calculate resolved issues for the current month
       const currentDate = new Date();
-      const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-indexed
+      const currentMonth = currentDate.getMonth() + 1;
       const currentYear = currentDate.getFullYear();
       
-      // Filter for resolved issues in the current month
       const resolvedInCurrentMonth = allReports.filter(report => {
-        if (report.status !== 'Resolved') return false;
+        if (!report.status || report.status.toLowerCase() !== 'resolved') return false;
         
-        const reportDate = new Date(report.reportDate);
+        const reportDate = new Date(report.reportDate || report.updatedAt || report.createdAt);
+        if (isNaN(reportDate.getTime())) return false;
+        
         return reportDate.getMonth() + 1 === currentMonth && 
                reportDate.getFullYear() === currentYear;
       });
       
       setResolvedThisMonth(resolvedInCurrentMonth.length);
 
-      // Process all reports to calculate severity distribution
-      // Count risk levels
+      // Process severity distribution
       const severityCounts = {
         critical: 0,
         high: 0,
@@ -109,68 +182,75 @@ const Dashboard = () => {
       };
       
       allReports.forEach(report => {
-        const riskLevel = (report.riskLevel || report.severity || '').toLowerCase();
+        const riskLevel = (report.riskLevel || report.severity || 'medium').toLowerCase();
+        const status = (report.status || '').toLowerCase();
         
-        // Count by severity
         if (riskLevel === 'low') {
-          severityCounts.low += 1;
+          severityCounts.low++;
         } else if (riskLevel === 'medium') {
-          severityCounts.medium += 1;
+          severityCounts.medium++;
         } else if (riskLevel === 'high') {
-          severityCounts.high += 1;
-          
-          // Check for critical cases (high risk + not resolved)
-          const status = (report.status || '').toLowerCase();
+          severityCounts.high++;
+          // Mark as critical if high risk and not resolved
           if (status !== 'resolved') {
-            severityCounts.critical += 1;
+            severityCounts.critical++;
           }
+        } else if (riskLevel === 'critical') {
+          severityCounts.critical++;
         }
       });
       
       setSeverityData(severityCounts);
 
-      // Process reports to get defect type distribution
+      // Process defect type distribution
       const defectTypeCounts = {};
       
-      // Count occurrences of each defect type
       allReports.forEach(report => {
         const defectType = report.defectType || report.type || 'Unknown';
         defectTypeCounts[defectType] = (defectTypeCounts[defectType] || 0) + 1;
       });
       
-      // Convert to array format for display
       const defectTypeArray = Object.entries(defectTypeCounts).map(([type, count]) => ({
         type,
         count,
-        percentage: (count / allReports.length * 100).toFixed(1)
+        percentage: allReports.length > 0 ? (count / allReports.length * 100).toFixed(1) : '0.0'
       }));
       
-      // Sort by count (highest first)
       defectTypeArray.sort((a, b) => b.count - a.count);
-      
-      // Take top 5 types
       const topDefectTypes = defectTypeArray.slice(0, 5);
       
-      // If more than 5 types exist, add an "Other" category
       if (defectTypeArray.length > 5) {
         const otherCount = defectTypeArray
           .slice(5)
           .reduce((total, item) => total + item.count, 0);
         
-        topDefectTypes.push({
-          type: 'Other',
-          count: otherCount,
-          percentage: (otherCount / allReports.length * 100).toFixed(1)
-        });
+        if (otherCount > 0) {
+          topDefectTypes.push({
+            type: 'Other',
+            count: otherCount,
+            percentage: (otherCount / allReports.length * 100).toFixed(1)
+          });
+        }
       }
       
       setDefectTypeData(topDefectTypes);
-      setError(null);
+      
+      console.log('Data fetch completed successfully');
+      
     } catch (err) {
-      console.error("Error fetching reports:", err);
-      setError("Failed to load data. Please try again later.");
-      // Use sample data as fallback
-      setRecentReports(defects.slice(0, 4));
+      console.error("Error in fetchData:", err);
+      const errorMessage = err.response ? 
+        `API Error: ${err.response.status} - ${err.response.statusText}` :
+        `Network Error: ${err.message}`;
+      
+      setError(errorMessage);
+      
+      // Use sample data as fallback if available
+      if (typeof defects !== 'undefined' && Array.isArray(defects)) {
+        console.log('Using fallback data');
+        setRecentReports(defects.slice(0, 4));
+      }
+      
     } finally {
       setLoading(false);
     }
@@ -178,11 +258,57 @@ const Dashboard = () => {
 
   // Call fetchData when component mounts
   useEffect(() => {
+    console.log('Dashboard component mounted, fetching data...');
     fetchData();
   }, []);
 
+  // Add a debug section to show current API configuration
+  const debugInfo = process.env.NODE_ENV === 'development' ? (
+    <div style={{ 
+      position: 'fixed', 
+      top: 0, 
+      right: 0, 
+      background: 'rgba(0,0,0,0.8)', 
+      color: 'white', 
+      padding: '10px', 
+      fontSize: '12px',
+      zIndex: 9999 
+    }}>
+     
+    </div>
+  ) : null;
+
   return (
     <div className="content-area">
+      {debugInfo}
+      
+      {error && (
+        <div className="error-banner" style={{
+          background: '#f8d7da',
+          color: '#721c24',
+          padding: '12px',
+          marginBottom: '20px',
+          borderRadius: '4px',
+          border: '1px solid #f5c6cb'
+        }}>
+          <strong>Data Loading Error:</strong> {error}
+          <button 
+            onClick={fetchData} 
+            style={{ 
+              marginLeft: '10px', 
+              padding: '5px 10px', 
+              background: '#721c24', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '3px', 
+              cursor: 'pointer' 
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Overview Cards */}
       <div className="dashboard-stats">
         <div className="stat-card">
@@ -195,7 +321,7 @@ const Dashboard = () => {
         <div className="stat-card">
           <div className="stat-icon warning">⚙️</div>
           <div className="stat-content">
-            <h3 className="stat-value">{pieChartData.inprogress}</h3>
+            <h3 className="stat-value">{pieChartData.inProgress}</h3>
             <p className="stat-label">In Progress</p>
           </div>
         </div>
@@ -236,7 +362,6 @@ const Dashboard = () => {
               <div className="error-message">Failed to load chart data</div>
             ) : (
               <div className="chart-placeholder">
-                {/* Updated to use pieChartData from API */}
                 <div className="pie-chart">
                   <div className="pie-segment" style={{
                     transform: "rotate(0deg)", 
@@ -264,7 +389,7 @@ const Dashboard = () => {
                   </div>
                   <div className="legend-item">
                     <span className="legend-color" style={{background: "#3498db"}}></span>
-                    <span className="legend-label">In Progress ({pieChartData.inprogress})</span>
+                    <span className="legend-label">In Progress ({pieChartData.inProgress})</span>
                   </div>
                   <div className="legend-item">
                     <span className="legend-color" style={{background: "#e74c3c"}}></span>
@@ -375,10 +500,10 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentReports.map((report, index) => (
-                    <tr key={report._id || index}>
+                  {recentReports.length > 0 ? recentReports.map((report, index) => (
+                    <tr key={report._id || report.id || index}>
                       <td>#{index + 1}</td>
-                      <td>{report.location || 'N/A'}</td>
+                      <td>{report.location || report.section || 'N/A'}</td>
                       <td>{report.defectType || report.type || 'N/A'}</td>
                       <td>
                         <span className={`severity-badge severity-${(report.riskLevel || report.severity || 'medium').toLowerCase()}`}>
@@ -390,10 +515,16 @@ const Dashboard = () => {
                           {report.status || 'Pending'}
                         </span>
                       </td>
-                      <td>{formatDate(report.reportDate || report.date)}</td>
-                      <td>{report.assignedTo || 'Unassigned'}</td>
+                      <td>{formatDate(report.reportDate || report.date || report.createdAt)}</td>
+                      <td>{report.assignedTo || report.team || 'Unassigned'}</td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan="7" style={{textAlign: 'center', padding: '20px'}}>
+                        No recent reports found
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}
@@ -407,7 +538,6 @@ const Dashboard = () => {
           </div>
           <div className="chart-container">
             <div className="bar-chart-placeholder">
-              {/* Placeholder for actual chart - in real app, use a charting library */}
               <div className="bar-chart">
                 <div className="bar-container">
                   <div className="bar-label">Colombo-Panadura</div>
@@ -451,7 +581,7 @@ const Dashboard = () => {
               <div className="error-message">Failed to load defect type data</div>
             ) : (
               <div className="stat-distribution">
-                {defectTypeData.map((item, index) => (
+                {defectTypeData.length > 0 ? defectTypeData.map((item, index) => (
                   <div className="stat-item" key={index}>
                     <div className="stat-item-label">{item.type}</div>
                     <div className="stat-progress-bar">
@@ -460,9 +590,11 @@ const Dashboard = () => {
                         style={{width: `${item.percentage}%`}}
                       ></div>
                     </div>
-                    <div className="stat-item-value"> ({item.percentage}%)</div>
+                    <div className="stat-item-value">({item.percentage}%)</div>
                   </div>
-                ))}
+                )) : (
+                  <div className="no-data">No defect type data available</div>
+                )}
               </div>
             )}
           </div>
